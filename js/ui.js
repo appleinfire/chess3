@@ -147,7 +147,10 @@
       for (const m of moves) {
         const [x, y] = cellMid[m.to], r = cellSize[m.to];
         if (st.board[m.to] || (st.ep && m.to === st.ep.skip && st.board[m.from].t === 'p' && st.board[m.from].o !== st.ep.o))
-          el('circle', { cx: x, cy: y, r: r * 0.44, fill: 'none', stroke: 'rgba(40,140,60,.9)', 'stroke-width': r * 0.1 }, marksG);
+        { // A capture: the whole cell turns orange-red with a thick ring, so it shows even under a white piece.
+          poly(m.to, { fill: 'rgba(232,90,40,.6)', class: 'cap' });
+          el('circle', { cx: x, cy: y, r: r * 0.46, fill: 'none', stroke: 'rgba(170,30,10,.95)', 'stroke-width': r * 0.13 }, marksG);
+        }
         else el('circle', { cx: x, cy: y, r: r * 0.17, fill: 'rgba(30,110,50,.75)' }, marksG);
       }
     }

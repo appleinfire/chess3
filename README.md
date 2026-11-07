@@ -7,7 +7,7 @@ It is a static web page with no server and no accounts. The game is saved on the
 
 - Open the GitHub Pages site in Safari on the iPad, tap **Share → Add to Home Screen**. It then opens full screen and works offline.
 - Or open `dist/chess3.html`: the same game in one file.
-- Tap one of your pieces: green dots show where it can go, rings show what it can capture. Tap a dot to move.
+- Tap one of your pieces: green dots show where it can go; orange-red cells with a ring show what it can capture. Tap a dot to move.
 - **Undo** takes back moves one at a time (handy for kids). **New game** offers the normal start or **Set up pieces**.
 - **Rules** switches rules on and off for the next game (see "Rule switches" below) and has a short how-to-play.
 - **On a phone held upright** the board lies on its corner (turned 90°) so it fills the tall screen, the player names move to a strip

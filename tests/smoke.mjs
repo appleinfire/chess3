@@ -39,6 +39,13 @@ let s = await page.evaluate(() => window.__chess3.state);
 const count = o => s.board.filter(x => x && x.o === o).length;
 if (count(2) !== 15 || count(0) !== 17 || s.board[67] || s.board[18].t !== 'q') throw new Error('custom start ' + count(0) + ' ' + count(2));
 await page.screenshot({ path: path.join(out, 'teams.png') });
+// A piece that can be captured is shown clearly: the cell is filled (class "cap"), not just ringed.
+await page.click('#new'); await page.click('#dCustom'); await page.click('#eReset');
+await page.click('.who[data-o="2"]'); await page.click('.kind[data-t="p"]'); await tapCell(19); // a Red pawn on White's d3 (Black is White's teammate here)
+await page.click('#eStart'); await tapCell(12); // White's e2 pawn can take it
+const caps = await page.locator('polygon.cap').count(); if (caps !== 1) throw new Error('capture cells ' + caps);
+await page.screenshot({ path: path.join(out, 'capture.png') });
+await tapCell(12);
 // A bad setup is refused with a message.
 await page.click('#new'); await page.click('#dCustom'); await page.click('#eClear'); await page.click('#eStart');
 if (!await page.evaluate(() => window.__chess3.editing)) throw new Error('empty board was accepted');
