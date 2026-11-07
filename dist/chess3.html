@@ -41,7 +41,7 @@ button.primary { background: var(--brass); color: #2a1c0c; border-color: var(--b
 .status { text-align: center; min-height: 28px; font: 500 19px/1.3 var(--body); margin-top: 6px; }
 .status.alarm { color: #ffb4a8; }
 .stage { flex: 1; min-height: 0; display: grid; place-items: center; }
-svg#board { width: 100%; height: 100%; max-width: 100%; touch-action: manipulation; }
+svg#board { width: 100%; height: 100%; max-width: 100%; touch-action: none; }
 #world { transition: transform .7s cubic-bezier(.4,.1,.2,1); }
 .cell { stroke: rgba(60,35,15,.35); stroke-width: .002; cursor: pointer; }
 .cell.l { fill: var(--maple); } .cell.d { fill: var(--walnut); }
@@ -80,6 +80,19 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
 .row.promo { justify-content: center; } .row.promo button.kind { min-width: 72px; min-height: 72px; } .row.promo button.kind span { font-size: 48px; }
 .tog { display: flex !important; align-items: center; gap: 12px; color: var(--ink) !important; font-size: 17px !important; min-height: 40px; }
 .tog input { width: 26px; height: 26px; accent-color: var(--brass); flex: none; }
+/* Phones held upright (body.compact, set by ui.js): icon toolbar, player strip, board edge to edge. */
+.players { display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 6px 0 2px; }
+.players .pl { font: 700 15px var(--display); padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(241,231,211,.2); background: rgba(0,0,0,.25); white-space: nowrap; }
+.players .pl.on { border-color: var(--brass); background: rgba(217,164,65,.28); }
+.players .pl.out { opacity: .4; }
+.players .zoom { min-width: 44px; padding: 4px 10px; font-size: 20px; border-radius: 99px; }
+body.compact .app { padding-left: max(4px, env(safe-area-inset-left, 0px)); padding-right: max(4px, env(safe-area-inset-right, 0px)); }
+body.compact .bar { flex-wrap: nowrap; gap: 6px; padding: 0 8px; }
+body.compact .bar h1 { font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+body.compact .bar button { width: 44px; padding: 0; font-size: 22px; flex: none; }
+body.compact .status { font-size: 17px; margin-top: 4px; padding: 0 8px; }
+body.compact button.kind { min-width: 44px; padding: 4px 4px; }
+body.compact button.kind span { font-size: 30px; }
 @media (prefers-reduced-motion: reduce) { #world, .piece .rot { transition: none; } }
 @media (max-width: 520px) { .bar h1 { font-size: 18px; } button { padding: 8px 10px; font-size: 15px; } }
 </style>
@@ -94,6 +107,7 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
     <button id="settings" type="button">Settings</button>
   </div>
   <div class="status" id="status" aria-live="polite"></div>
+  <div class="players" id="players" hidden></div>
   <div class="stage"><svg id="board" viewBox="-1.13 -1.13 2.26 2.26" role="img" aria-label="Board"></svg></div>
   <div class="palette" id="palette" hidden></div>
 </div>
@@ -381,7 +395,7 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
       erase: 'Remove', clear: 'Empty board', reset: 'Normal start', cancel: 'Cancel', start: 'Start the game', noPieces: '{n}: no pieces (sits out)',
       eTwoKings: '{n} has more than one king.', eNoKing: '{n} needs a king.', eSides: 'At least two sides need a king.',
       ePawnRow: 'A pawn of {n} stands on another player’s first row.',
-      pick: 'What should the pawn become?',
+      pick: 'What should the pawn become?', zoom: 'Zoom',
       rulesText: [
         'Three players take turns: White, then Black, then Red.',
         'Pieces move like in normal chess. Tap a piece to see where it can go.',
@@ -410,7 +424,7 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
       erase: 'Убрать', clear: 'Пустая доска', reset: 'Обычная расстановка', cancel: 'Отмена', start: 'Начать игру', noPieces: '{n}: нет фигур (не играют)',
       eTwoKings: 'У игрока «{n}» больше одного короля.', eNoKing: 'Игроку «{n}» нужен король.', eSides: 'Король нужен хотя бы двум сторонам.',
       ePawnRow: 'Пешка игрока «{n}» стоит на первом ряду другого игрока.',
-      pick: 'Кем станет пешка?',
+      pick: 'Кем станет пешка?', zoom: 'Приблизить',
       rulesText: [
         'Три игрока ходят по очереди: белые, потом чёрные, потом красные.',
         'Фигуры ходят как в обычных шахматах. Нажми на фигуру, и увидишь, куда она может пойти.',
@@ -458,7 +472,11 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
   const glyph = t => GLYPH[t] + '︎';
 
   // Rotation of the whole board ("turn" view) and of each piece so it reads upright (or faces its owner).
-  const worldRot = () => save.view === 'turn' && !edit ? 120 * st.turn : 0;
+  // Phone held upright: the board lies on its corner (turned 90 degrees) so its long side runs down the
+  // tall screen, the name plates move to a strip above it, and the toolbar shows icons.
+  let compact = false;
+  const isCompact = () => window.innerWidth < 700 && window.innerHeight > window.innerWidth * 1.15;
+  const worldRot = () => (compact ? 90 : 0) + (save.view === 'turn' && !edit ? 120 * st.turn : 0);
   const pieceRot = o => save.view === 'table' ? -120 * o : -worldRot();
 
   let world, marksG, piecesG, labelsG;
@@ -469,7 +487,6 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
     const cellsG = el('g', {}, world); marksG = el('g', { class: 'mark' }, world); piecesG = el('g', {}, world); labelsG = el('g', {}, world);
     for (let i = 0; i < 96; i++) {
       const c = el('polygon', { points: cellPoly[i].map(p => p.join(',')).join(' '), class: 'cell ' + ((C.fileOf(i) + C.rankOf(i)) % 2 ? 'l' : 'd'), 'data-i': i }, cellsG);
-      c.addEventListener('pointerdown', e => { e.preventDefault(); edit ? editTap(i) : tap(i); });
     }
     // Small file letters along each player's first row.
     for (let s = 0; s < 3; s++) for (let f = 0; f < 8; f++) {
@@ -483,7 +500,9 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
     const t = tr(), board = edit ? edit.board : st.board;
     document.documentElement.lang = save.lang;
     $('title').textContent = t.title; document.title = t.title;
-    $('undo').textContent = t.undo; $('new').textContent = t['new']; $('rules').textContent = t.rules; $('settings').textContent = t.settings;
+    for (const [id, icon] of [['undo', '\u21B6'], ['new', '+'], ['rules', '?'], ['settings', '\u2699']]) {
+      $(id).textContent = compact ? icon : t[id]; $(id).setAttribute('aria-label', t[id]); $(id).title = t[id];
+    }
     $('undo').disabled = !save.hist.length || !!edit;
     world.style.transform = `rotate(${worldRot()}deg)`;
     marksG.textContent = ''; piecesG.textContent = ''; labelsG.textContent = '';
@@ -501,14 +520,14 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
     }
     for (let i = 0; i < 96; i++) {
       const pc = board[i]; if (!pc) continue;
-      const [x, y] = cellMid[i], sz = cellSize[i] * 0.95, frozen = !edit && !st.alive[pc.o];
+      const [x, y] = cellMid[i], sz = cellSize[i] * (compact ? 1.05 : 0.95), frozen = !edit && !st.alive[pc.o];
       const g = el('g', { class: 'piece' + (frozen ? ' frozen' : ''), transform: `translate(${x},${y})`, 'data-i': i }, piecesG);
       const rg = el('g', { class: 'rot', style: `transform: rotate(${pieceRot(pc.o)}deg)` }, g);
       el('text', { class: 'o' + pc.o, 'font-size': sz, 'stroke-width': sz * 0.07, y: sz * 0.02 }, rg).textContent = glyph(pc.t);
     }
     // Player name plates outside each player's side, facing that player. Teammates share a star colour.
     const R = edit ? save.rules : st.rules || {};
-    for (let p = 0; p < 3; p++) {
+    for (let p = 0; p < 3 && !compact; p++) {
       const m = M[2 * p], playing = edit ? edit.board.some(x => x && x.o === p) : st.alive[p];
       const g = el('g', { class: 'label' + (!edit && p === st.turn && !over() ? ' on' : '') + (playing ? '' : ' out'),
         transform: `translate(${m[0] * 1.17},${m[1] * 1.17}) rotate(${-120 * p})` }, labelsG);
@@ -521,6 +540,7 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
       el('text', { x: 0.03, 'font-size': 0.075, fill: '#f1e7d3' }, g).textContent = text;
     }
     renderStatus(t);
+    renderStrip(t, R);
     renderPalette(t);
     if (animate && st.last) {
       animate = false;
@@ -535,6 +555,69 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
     if (over() && !shownEnd && !edit) { shownEnd = true; setTimeout(showEnd, 500); }
   }
   let shownEnd = over();
+
+  // Player strip (phones): names with the player to move lit up, and the zoom button.
+  function renderStrip(t, R) {
+    const strip = $('players'); strip.hidden = !compact; if (!compact) return;
+    const html = [0, 1, 2].map(p => {
+      const playing = edit ? edit.board.some(x => x && x.o === p) : st.alive[p];
+      const caps = edit ? 0 : st.captured[p].filter(x => x !== 'k').length;
+      const team = R.teams && R.teams.filter(y => y === R.teams[p]).length === 2 ? ' \u2605' : '';
+      return `<span class="pl${!edit && p === st.turn && !over() ? ' on' : ''}${playing ? '' : ' out'}"><i class="chip" style="background:${['var(--ivory)', 'var(--ebony)', 'var(--ruby)'][p]}"></i>${esc(nameOf(p) + team)}${caps ? ' +' + caps : ''}</span>`;
+    }).join('') + `<button type="button" id="zoomBtn" class="zoom${zoom > 1 ? ' on' : ''}" aria-label="${esc(t.zoom)}" title="${esc(t.zoom)}">${zoom > 1 ? '\u2921' : '\u2922'}</button>`;
+    strip.innerHTML = html;
+    $('zoomBtn').onclick = () => { zoom > 1 ? setZoom(1) : setZoom(1.8, true); };
+  }
+
+  // ---- zoom and pan: a button on phones, a two-finger pinch anywhere; drag with one finger when zoomed in ----
+  let zoom = 1, cx = 0, cy = 0;
+  const baseBox = () => compact ? [-0.915, -1.045, 1.83, 2.09] : [-1.13, -1.13, 2.26, 2.26];
+  function applyView() {
+    const [x, y, w, h] = baseBox(), zw = w / zoom, zh = h / zoom;
+    const lim = v => Math.max(-0.8, Math.min(0.8, v));
+    if (zoom <= 1) { cx = 0; cy = 0; } else { cx = lim(cx); cy = lim(cy); }
+    svg.setAttribute('viewBox', zoom <= 1 ? `${x} ${y} ${w} ${h}` : `${cx - zw / 2} ${cy - zh / 2} ${zw} ${zh}`);
+  }
+  function setZoom(z, toPlayer) {
+    zoom = Math.max(1, Math.min(2.6, z));
+    if (toPlayer && zoom > 1) {
+      // Centre on the side of the player to move, as it appears on screen (the board may be turned).
+      const m = M[2 * st.turn], a = worldRot() * Math.PI / 180, px = m[0] * 0.5, py = m[1] * 0.5;
+      cx = px * Math.cos(a) - py * Math.sin(a); cy = px * Math.sin(a) + py * Math.cos(a);
+    }
+    applyView(); if (toPlayer !== undefined) render();
+  }
+  const pts = new Map(); let press = null, pinch = null;
+  svg.addEventListener('pointerdown', e => {
+    e.preventDefault(); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 1) { const c = e.target.closest && e.target.closest('[data-i]'); press = { x: e.clientX, y: e.clientY, cell: c ? +c.dataset.i : null, moved: false, cx, cy }; }
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: zoom }; if (press) press.moved = true; }
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && pts.size === 2) { const [a, b] = [...pts.values()]; setZoom(pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d); return; }
+    if (!press || pts.size !== 1) return;
+    const dx = e.clientX - press.x, dy = e.clientY - press.y;
+    if (!press.moved && Math.hypot(dx, dy) < 12) return;
+    press.moved = true;
+    if (zoom > 1) { const k = svg.getScreenCTM().a; cx = press.cx - dx / k; cy = press.cy - dy / k; applyView(); }
+  });
+  const lift = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (pts.size < 2 && pinch) { pinch = null; render(); }
+    if (pts.size === 0) {
+      if (press && !press.moved && press.cell != null && e.type === 'pointerup') edit ? editTap(press.cell) : tap(press.cell);
+      press = null;
+    }
+  };
+  svg.addEventListener('pointerup', lift); svg.addEventListener('pointercancel', lift);
+  function layout() {
+    const c = isCompact(); if (c === compact && svg.dataset.ready) return;
+    compact = c; svg.dataset.ready = 1; document.body.classList.toggle('compact', compact); applyView(); render();
+  }
+  window.addEventListener('resize', layout);
 
   const winText = t => st.winners.length > 1 ? fill(t.winTeam, { n: st.winners.map(nameOf).join(t.and) }) : fill(t.wins, { n: nameOf(st.winners[0]) });
   function renderStatus(t) {
@@ -706,7 +789,7 @@ button.kind.o2 span { color: var(--ruby); -webkit-text-stroke-color: #3a0b0d; }
   wake();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
-  build(); render();
+  build(); layout();
   window.__chess3 = { get state() { return st; }, tap, get editing() { return !!edit; } };
 })();
 </script>

@@ -10,6 +10,10 @@ It is a static web page with no server and no accounts. The game is saved on the
 - Tap one of your pieces: green dots show where it can go, rings show what it can capture. Tap a dot to move.
 - **Undo** takes back moves one at a time (handy for kids). **New game** offers the normal start or **Set up pieces**.
 - **Rules** switches rules on and off for the next game (see "Rule switches" below) and has a short how-to-play.
+- **On a phone held upright** the board lies on its corner (turned 90°) so it fills the tall screen, the player names move to a strip
+  above the board, and the toolbar shows icons (↶ undo, + new game, ? rules, ⚙ settings). Turned sideways, or on an iPad, the layout is the normal one.
+- **Zoom**: the ⤢ button in the phone strip zooms in on the side of the player to move; ⤡ shows the whole board again.
+  Anywhere (also on the iPad) two fingers pinch to zoom, and one finger drags the zoomed board. A tap counts only if the finger did not move.
 - **Settings**: player names, language (English / Russian), sounds, and the board view:
   - *Board stays still*: all pieces are upright for someone sitting at the bottom.
   - *Board turns to the player to move*: the board rotates so the player whose turn it is sees their side at the bottom.
