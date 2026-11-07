@@ -21,7 +21,29 @@ await tapCell(32 + 11); await tapCell(32 + 27); // Black d2-d4
 turn = await page.evaluate(() => window.__chess3.state.turn); if (turn !== 2) throw new Error('turn2 ' + turn);
 await page.screenshot({ path: path.join(out, 'board.png') });
 await page.click('#undo'); turn = await page.evaluate(() => window.__chess3.state.turn); if (turn !== 1) throw new Error('undo');
-await page.click('#rules'); await page.screenshot({ path: path.join(out, 'rules.png') }); await page.click('#dOk');
+// Rule switches: White + Black against Red, promotion by choice, frozen pieces; save and start.
+await page.click('#rules'); await page.screenshot({ path: path.join(out, 'rules.png') });
+await page.selectOption('#rTeams', '1'); await page.selectOption('#rPromo', 'choose'); await page.selectOption('#rMated', 'freeze'); await page.uncheck('#rCastling');
+await page.click('#rStart');
+let R = await page.evaluate(() => window.__chess3.state.rules);
+if (JSON.stringify(R.teams) !== '[0,0,1]' || R.promo !== 'choose' || R.castling !== false || R.mated !== 'freeze') throw new Error('rules ' + JSON.stringify(R));
+// Piece editor: Red plays without a queen.
+await page.click('#new'); await page.click('#dCustom');
+if (!await page.evaluate(() => window.__chess3.editing)) throw new Error('editor did not open');
+await page.click('.who[data-o="2"]'); await page.click('.kind[data-t="x"]');
+await tapCell(64 + 3); // Red's d1 queen
+await page.click('.who[data-o="0"]'); await page.click('.kind[data-t="q"]'); await tapCell(18); // an extra White queen on c3
+await page.screenshot({ path: path.join(out, 'editor.png') });
+await page.click('#eStart');
+let s = await page.evaluate(() => window.__chess3.state);
+const count = o => s.board.filter(x => x && x.o === o).length;
+if (count(2) !== 15 || count(0) !== 17 || s.board[67] || s.board[18].t !== 'q') throw new Error('custom start ' + count(0) + ' ' + count(2));
+await page.screenshot({ path: path.join(out, 'teams.png') });
+// A bad setup is refused with a message.
+await page.click('#new'); await page.click('#dCustom'); await page.click('#eClear'); await page.click('#eStart');
+if (!await page.evaluate(() => window.__chess3.editing)) throw new Error('empty board was accepted');
+const msg = await page.textContent('#status'); if (!/two sides/.test(msg)) throw new Error('msg ' + msg);
+await page.click('#eCancel');
 await page.click('#settings'); await page.selectOption('#vw', 'table'); await page.selectOption('#lg', 'ru'); await page.fill('#nm0', 'Masha'); await page.click('#dOk');
 await page.waitForTimeout(800);
 await page.screenshot({ path: path.join(out, 'table-ru.png') });

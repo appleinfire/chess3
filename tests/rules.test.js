@@ -3,9 +3,9 @@ const assert = require('assert');
 const C = require('../js/rules.js');
 let n = 0; const t = (name, fn) => { fn(); n++; };
 const c = C.cell, nm = C.name;
-const empty = () => { const s = C.newGame(); s.board = new Array(96).fill(null); return s; };
+const empty = rules => { const s = C.newGame(rules); s.board = new Array(96).fill(null); s.turn = 0; return s; };
 const put = (s, cell, o, tp, moved) => { s.board[c(cell)] = { o, t: tp, ...(moved ? { m: 1 } : {}) }; };
-const tg = (s, cell) => C.targets(s.board, c(cell), false).map(nm).sort();
+const tg = (s, cell) => C.targets(s, c(cell), false).map(nm).sort();
 
 t('every step can be walked back', () => {
   for (let i = 0; i < 96; i++) for (const [a, b] of C.ORTHO.concat(C.DIAG)) for (const [j, x, y] of C.step(i, a, b))
@@ -100,7 +100,7 @@ t('a mated player is out and the last one standing wins', () => {
   put(m, 'Wa1', 0, 'k'); put(m, 'Wc2', 2, 'q'); put(m, 'Wb4', 2, 'r'); put(m, 'Bh1', 1, 'k'); put(m, 'Rh1', 2, 'k');
   const m2 = C.move(m, { from: c('Wc2'), to: c('Wb2') });
   assert.strictEqual(m2.alive[0], false); assert.strictEqual(m2.out[0], 'mate');
-  assert.strictEqual(m2.turn, 1); assert.strictEqual(m2.winner, null);
+  assert.strictEqual(m2.turn, 1); assert.strictEqual(m2.winners, null);
 });
 
 t('capturing a king (left in check by someone else) knocks that player out', () => {
@@ -113,7 +113,7 @@ t('capturing a king (left in check by someone else) knocks that player out', () 
   const w = empty(); w.turn = 1; w.alive = [false, true, true];
   put(w, 'Bh1', 1, 'k'); put(w, 'Ra1', 2, 'k'); put(w, 'Rb3', 1, 'q'); put(w, 'Rb4', 1, 'r');
   const w2 = C.move(w, { from: c('Rb3'), to: c('Rb2') });
-  assert.strictEqual(w2.winner, 1);
+  assert.deepStrictEqual(w2.winners, [1]);
 });
 
 t('only kings left is a draw', () => {
@@ -127,10 +127,123 @@ t('a random game never breaks the rules engine', () => {
   let seed = 7; const rnd = k => (seed = (seed * 1103515245 + 12345) % 2147483648) % k;
   for (let g = 0; g < 6; g++) {
     let s = C.newGame();
-    for (let ply = 0; ply < 300 && s.winner == null && !s.draw; ply++) {
+    for (let ply = 0; ply < 300 && s.winners == null && !s.draw; ply++) {
       const ms = C.legal(s, s.turn); assert(ms.length > 0, 'player to move must have a move');
       s = C.move(s, ms[rnd(ms.length)]);
       for (let p = 0; p < 3; p++) assert.strictEqual(s.alive[p], s.board.some(x => x && x.o === p && x.t === 'k'));
+    }
+  }
+});
+
+// ---- switchable rules ----
+const board = list => { const b = new Array(96).fill(null); for (const [cell, o, tp] of list) b[c(cell)] = { o, t: tp }; return b; };
+const kings = [['We1', 0, 'k'], ['Be1', 1, 'k'], ['Re1', 2, 'k']];
+
+t('centre fork off: diagonals stop at the centre', () => {
+  const s = empty({ centreFork: false }); put(s, 'Wa1', 0, 'b');
+  const r = tg(s, 'Wa1');
+  assert(r.includes('Wd4') && !r.includes('Bd4') && !r.includes('Rd4'));
+  assert.strictEqual(C.step(c('Wd4'), 1, 1, false).length, 0);
+  assert(C.tables.near[0][c('Wd4')].length < C.tables.near[1][c('Wd4')].length);
+});
+
+t('castling and the pawn double step can be switched off', () => {
+  const s = empty({ castling: false }); put(s, 'We1', 0, 'k'); put(s, 'Wh1', 0, 'r'); put(s, 'Ba1', 1, 'k'); put(s, 'Ra1', 2, 'k');
+  assert(!C.legal(s, 0, c('We1')).some(m => m.rook != null));
+  const p = empty({ doubleStep: false }); put(p, 'Wd2', 0, 'p');
+  assert.deepStrictEqual(tg(p, 'Wd2'), ['Wd3']);
+  assert.strictEqual(C.legal(C.newGame({ doubleStep: false }), 0).length, 12); // 8 pawn steps + 4 knight jumps
+});
+
+t('en passant: only when switched on, only for the very next move', () => {
+  const pos = board(kings.concat([['Wd2', 0, 'p'], ['Wc4', 1, 'p']]));
+  pos[c('Wc4')].m = 1;
+  for (const on of [true, false]) {
+    let s = C.newGame({ enPassant: on }, pos);
+    s = C.move(s, { from: c('Wd2'), to: c('Wd4') });
+    assert.strictEqual(s.turn, 1);
+    // Black's pawn on White's c4 walks down White's part; it may take on d3.
+    const ms = C.legal(s, 1, c('Wc4')).map(m => nm(m.to));
+    assert.strictEqual(ms.includes('Wd3'), on);
+    if (on) {
+      const s2 = C.move(s, C.legal(s, 1, c('Wc4')).find(m => nm(m.to) === 'Wd3'));
+      assert.strictEqual(s2.board[c('Wd4')], null); assert.deepStrictEqual(s2.captured[1], ['p']);
+    }
+  }
+});
+
+t('promotion: always a queen, or the player chooses', () => {
+  const pos = board(kings.concat([['Rc2', 0, 'p']]));
+  assert.deepStrictEqual(C.legal(C.newGame({}, pos), 0, c('Rc2')).map(m => m.promo), ['q']);
+  const ch = C.newGame({ promo: 'choose' }, pos), ms = C.legal(ch, 0, c('Rc2'));
+  assert.deepStrictEqual(ms.map(m => m.promo).sort(), ['b', 'n', 'q', 'r']);
+  assert.strictEqual(C.move(ch, ms.find(m => m.promo === 'n')).board[c('Rc1')].t, 'n');
+});
+
+t('king capture off: a king left in check cannot be taken', () => {
+  const pos = board([['Wa1', 0, 'k'], ['Wa3', 1, 'r'], ['Bh1', 1, 'k'], ['Rh1', 2, 'k']]);
+  const on = C.newGame({}, pos); on.turn = 1;
+  assert(C.legal(on, 1, c('Wa3')).some(m => nm(m.to) === 'Wa1'));
+  const off = C.newGame({ kingCapture: false }, pos); off.turn = 1;
+  assert(!C.legal(off, 1, c('Wa3')).some(m => nm(m.to) === 'Wa1'));
+});
+
+t('frozen pieces stay, do not move or give check, and can be captured', () => {
+  const m = C.newGame({ mated: 'freeze' }, board([['Wa1', 0, 'k'], ['Wh3', 0, 'r'], ['Wc2', 2, 'q'], ['Wb4', 2, 'r'], ['Bh1', 1, 'k'], ['Rh1', 2, 'k']]));
+  m.turn = 2;
+  const m2 = C.move(m, { from: c('Wc2'), to: c('Wb2') });
+  assert.strictEqual(m2.alive[0], false); assert.strictEqual(m2.out[0], 'mate');
+  assert.strictEqual(m2.board[c('Wh3')].t, 'r'); // White's rook is still there, frozen
+  assert.strictEqual(m2.turn, 1);
+  // The frozen rook does not check anybody, and Black may capture it.
+  assert(C.legal(m2, 1).length > 0);
+  const s = C.newGame({ mated: 'freeze' }, board([['Wa1', 0, 'k'], ['Ba4', 0, 'r'], ['Ba1', 1, 'k'], ['Rh1', 2, 'k']]));
+  s.alive[0] = false; s.turn = 1;
+  assert(!C.inCheck(s, 1));
+  assert(C.legal(s, 1).some(mv => nm(mv.to) === 'Ba2')); // the king may walk next to the frozen rook, into its line
+});
+
+t('teams: no capturing or checking a teammate, the team wins together', () => {
+  const R = { teams: [0, 0, 1] }; // White and Black against Red
+  const s = C.newGame(R, board(kings.concat([['Wd4', 0, 'r'], ['Re4', 1, 'n']])));
+  assert(!C.legal(s, 0, c('Wd4')).some(m => nm(m.to) === 'Re4'));
+  const ck = C.newGame(R, board([['We1', 0, 'k'], ['We4', 1, 'r'], ['Be1', 1, 'k'], ['Ra1', 2, 'k']]));
+  assert(!C.inCheck(ck, 0)); // a teammate's rook looking at the king is no check
+  // Red is mated by Black: White and Black both win, the game ends.
+  const w = C.newGame(R, board([['Wh1', 0, 'k'], ['Bh1', 1, 'k'], ['Ra1', 2, 'k'], ['Rb3', 1, 'q'], ['Rb4', 1, 'r']]));
+  w.turn = 1;
+  const w2 = C.move(w, { from: c('Rb3'), to: c('Rb2') });
+  assert.deepStrictEqual(w2.winners, [0, 1]);
+});
+
+t('custom setups: checked before the game, a player with no pieces sits out', () => {
+  assert.strictEqual(C.checkSetup(C.standardBoard()), null);
+  const noQueen = C.standardBoard(); noQueen[c('Rd1')] = null; // Red plays without a queen
+  assert.strictEqual(C.checkSetup(noQueen), null);
+  const g = C.newGame({}, noQueen); assert.strictEqual(g.board.filter(p => p && p.o === 2).length, 15);
+  const two = board([['We1', 0, 'k'], ['Wd1', 0, 'k'], ['Be1', 1, 'k']]);
+  assert.deepStrictEqual(C.checkSetup(two), { error: 'twoKings', p: 0 });
+  assert.deepStrictEqual(C.checkSetup(board([['We1', 0, 'k'], ['Bd1', 1, 'q']])), { error: 'noKing', p: 1 });
+  assert.deepStrictEqual(C.checkSetup(board([['We1', 0, 'k']])), { error: 'sides' });
+  assert.deepStrictEqual(C.checkSetup(board(kings.concat([['Bd1', 0, 'p']]))), { error: 'pawnRow', p: 0 });
+  assert.deepStrictEqual(C.checkSetup(board([['We1', 0, 'k'], ['Be1', 1, 'k']]), { teams: [0, 0, 1] }), { error: 'sides' });
+  // Two-player game on the big board: Red has no pieces and is skipped.
+  const duo = C.newGame({}, board([['We1', 0, 'k'], ['Wd2', 0, 'p'], ['Be1', 1, 'k'], ['Bd2', 1, 'p']]));
+  assert.deepStrictEqual(duo.alive, [true, true, false]);
+  const d2 = C.move(duo, { from: c('Wd2'), to: c('Wd3') });
+  assert.strictEqual(d2.turn, 1);
+  assert.strictEqual(C.move(d2, { from: c('Bd2'), to: c('Bd3') }).turn, 0);
+});
+
+t('random games with every rule switched on or off', () => {
+  let seed = 11; const rnd = k => (seed = (seed * 1103515245 + 12345) % 2147483648) % k;
+  const sets = [{ centreFork: false, enPassant: true, promo: 'choose' }, { mated: 'freeze', kingCapture: false }, { teams: [0, 1, 1], enPassant: true }];
+  for (const R of sets) for (let g = 0; g < 2; g++) {
+    let s = C.newGame(R);
+    for (let ply = 0; ply < 250 && s.winners == null && !s.draw; ply++) {
+      const ms = C.legal(s, s.turn); assert(ms.length > 0);
+      s = C.move(s, ms[rnd(ms.length)]);
+      for (let p = 0; p < 3; p++) if (s.alive[p]) assert(s.board.some(x => x && x.o === p && x.t === 'k'));
     }
   }
 });
