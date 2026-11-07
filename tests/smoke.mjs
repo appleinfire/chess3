@@ -13,7 +13,7 @@ await page.evaluate(() => localStorage.clear()); await page.reload();
 const n = await page.locator('polygon.cell').count(); if (n !== 96) throw new Error('cells ' + n);
 const pieces = await page.locator('g.piece').count(); if (pieces !== 48) throw new Error('pieces ' + pieces);
 // White pawn e2 -> e4 by tapping cells (cell index = seg*32 + rank*8 + file).
-const tapCell = i => page.locator(`polygon.cell[data-i="${i}"]`).dispatchEvent('pointerdown');
+const tapCell = async i => { const c = page.locator(`polygon.cell[data-i="${i}"]`); await c.dispatchEvent('pointerdown'); await c.dispatchEvent('pointerup'); };
 await tapCell(12); const dots = await page.locator('.mark circle').count(); if (dots !== 2) throw new Error('dots ' + dots);
 await tapCell(28);
 let turn = await page.evaluate(() => window.__chess3.state.turn); if (turn !== 1) throw new Error('turn ' + turn);
@@ -47,7 +47,31 @@ await page.click('#eCancel');
 await page.click('#settings'); await page.selectOption('#vw', 'table'); await page.selectOption('#lg', 'ru'); await page.fill('#nm0', 'Masha'); await page.click('#dOk');
 await page.waitForTimeout(800);
 await page.screenshot({ path: path.join(out, 'table-ru.png') });
-const p2 = await browser.newPage({ viewport: { width: 390, height: 844 } }); await p2.goto(url); await p2.screenshot({ path: path.join(out, 'phone.png') });
+// Phone held upright: board on its corner, player strip, icon toolbar, zoom and pan.
+const p2 = await browser.newPage({ viewport: { width: 390, height: 844 } }); await p2.goto(url);
+await p2.evaluate(() => localStorage.clear()); await p2.reload();
+if (!await p2.evaluate(() => document.body.classList.contains('compact'))) throw new Error('phone layout not used');
+if (!/rotate\(90deg\)/.test(await p2.getAttribute('#world', 'style'))) throw new Error('board not turned');
+if (await p2.isHidden('#players')) throw new Error('no player strip');
+const realTap = async (pg, i) => { const b = await pg.locator(`polygon.cell[data-i="${i}"]`).boundingBox(); await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+await realTap(p2, 12); await realTap(p2, 28); // White e2-e4 with real taps
+if (await p2.evaluate(() => window.__chess3.state.turn) !== 1) throw new Error('phone tap move');
+const vb0 = (await p2.getAttribute('#board', 'viewBox')).split(' ').map(Number);
+await p2.click('#zoomBtn');
+const vb1 = (await p2.getAttribute('#board', 'viewBox')).split(' ').map(Number);
+if (!(vb1[2] < vb0[2] * 0.6)) throw new Error('zoom ' + vb1);
+await p2.screenshot({ path: path.join(out, 'phone-zoom.png') });
+// Drag pans the zoomed board and does not count as a tap.
+const sb = await p2.locator('#board').boundingBox();
+await p2.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2); await p2.mouse.down();
+await p2.mouse.move(sb.x + sb.width / 2 + 60, sb.y + sb.height / 2 + 40, { steps: 5 }); await p2.mouse.up();
+const vb2 = (await p2.getAttribute('#board', 'viewBox')).split(' ').map(Number);
+if (vb2[0] === vb1[0] || await p2.evaluate(() => window.__chess3.state.turn) !== 1) throw new Error('pan');
+await p2.click('#zoomBtn');
+await p2.screenshot({ path: path.join(out, 'phone.png') });
+// Turning the phone sideways goes back to the normal layout.
+await p2.setViewportSize({ width: 844, height: 390 }); await p2.waitForTimeout(200);
+if (await p2.evaluate(() => document.body.classList.contains('compact'))) throw new Error('landscape still compact');
 if (errors.length) throw new Error(errors.join('\n'));
 await browser.close();
 console.log('smoke: ok');
