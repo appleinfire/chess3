@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Chess for Three</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chess 3">
+<meta name="theme-color" content="#1f2a24">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: one screen, a felt game table with the hexagonal board in the middle and a thin toolbar on top. */
+:root {
+  --felt: #1f2a24; --felt-2: #26342c; --ink: #f1e7d3; --ink-dim: #b9ad95;
+  --maple: #e9cf9f; --walnut: #9a6a3f; --rim: #4a2f1b; --brass: #d9a441; --alarm: #e0473c;
+  --ivory: #f7f0e1; --ebony: #1c1a19; --ruby: #c8262c;
+  --display: "Alegreya SC", "Palatino", Georgia, serif;
+  --body: "Alegreya Sans", "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
+  --glyph: "Apple Symbols", "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; background: radial-gradient(ellipse at 50% 45%, var(--felt-2), var(--felt) 70%); color: var(--ink);
+  font: 17px/1.35 var(--body); overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; }
+.app { height: 100%; display: flex; flex-direction: column; box-sizing: border-box;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(10px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-bottom, 0px)); }
+.bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bar h1 { font: 700 22px/1 var(--display); letter-spacing: .04em; margin: 0 auto 0 0; color: var(--brass); }
+button { font: 500 16px/1 var(--body); color: var(--ink); background: rgba(255,255,255,.07); border: 1px solid rgba(241,231,211,.22);
+  border-radius: 10px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+button:active { background: rgba(255,255,255,.16); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button:disabled { opacity: .4; }
+button.primary { background: var(--brass); color: #2a1c0c; border-color: var(--brass); font-weight: 700; }
+.status { text-align: center; min-height: 28px; font: 500 19px/1.3 var(--body); margin-top: 6px; }
+.status .chip { display: inline-block; width: .8em; height: .8em; border-radius: 50%; vertical-align: -1px; margin-right: 6px;
+  border: 1px solid rgba(241,231,211,.6); }
+.status.alarm { color: #ffb4a8; }
+.stage { flex: 1; min-height: 0; display: grid; place-items: center; }
+svg#board { width: 100%; height: 100%; max-width: 100%; touch-action: manipulation; }
+#world { transition: transform .7s cubic-bezier(.4,.1,.2,1); }
+.cell { stroke: rgba(60,35,15,.35); stroke-width: .002; cursor: pointer; }
+.cell.l { fill: var(--maple); } .cell.d { fill: var(--walnut); }
+.mark { pointer-events: none; }
+.piece { pointer-events: none; }
+.piece text { font-family: var(--glyph); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke-linejoin: round; }
+.piece .rot { transition: transform .7s cubic-bezier(.4,.1,.2,1); }
+.o0 { fill: var(--ivory); stroke: #3b2a18; } .o1 { fill: var(--ebony); stroke: #efe3c9; } .o2 { fill: var(--ruby); stroke: #3a0b0d; }
+.label text { font-family: var(--display); font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.label .bg { fill: rgba(0,0,0,.25); stroke: rgba(241,231,211,.2); stroke-width: .004; }
+.label.on .bg { fill: rgba(217,164,65,.28); stroke: var(--brass); stroke-width: .008; }
+.label.out { opacity: .4; }
+.overlay { position: fixed; inset: 0; background: rgba(10,14,12,.72); display: grid; place-items: center; z-index: 5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.card { background: #2b2219; border: 1px solid rgba(217,164,65,.5); border-radius: 16px; padding: 22px; max-width: 520px; width: 100%;
+  box-sizing: border-box; max-height: 86vh; overflow: auto; display: grid; gap: 14px; }
+.card h2 { font: 700 26px/1.1 var(--display); color: var(--brass); margin: 0; text-wrap: balance; }
+.card p, .card li { margin: 0; color: var(--ink); }
+.card ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.card .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.card label { display: grid; gap: 4px; font-size: 15px; color: var(--ink-dim); }
+.card input, .card select { font: 18px var(--body); color: var(--ink); background: #1b1510; border: 1px solid rgba(241,231,211,.25);
+  border-radius: 8px; padding: 10px; min-height: 44px; box-sizing: border-box; }
+.big { font: 700 40px/1.1 var(--display); color: var(--brass); text-align: center; }
+@media (prefers-reduced-motion: reduce) { #world, .piece .rot { transition: none; } }
+@media (max-width: 520px) { .bar h1 { font-size: 18px; } button { padding: 8px 10px; font-size: 15px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <h1 id="title">Chess for Three</h1>
+    <button id="undo" type="button">Undo</button>
+    <button id="new" type="button">New game</button>
+    <button id="rules" type="button">Rules</button>
+    <button id="settings" type="button">Settings</button>
+  </div>
+  <div class="status" id="status" aria-live="polite"></div>
+  <div class="stage"><svg id="board" viewBox="-1.13 -1.13 2.26 2.26" role="img" aria-label="Board"></svg></div>
+</div>
+<div class="overlay" id="dlg" hidden><div class="card" id="dlgCard"></div></div>
+<script>
+// Three-player chess rules on the 96-cell hexagonal board. No DOM here, so tests can run it in Node.
+//
+// Board model: three segments (one per player), each 8 files (a-h) x 4 ranks (1-4) = 32 cells.
+// A cell index is seg*32 + rank*8 + file (file and rank from 0). Each player starts on ranks 1-2 of
+// their own segment. Rank 4 is where segments meet:
+//   files a-d of player p border files h-e of the previous player (p-1), rank 4 to rank 4;
+//   files e-h of player p border files d-a of the next player (p+1).
+// So walking "up" past your rank 4 you enter a neighbour's segment walking "down" toward their rank 1.
+// The six cells d4/e4 of all players meet at the centre. A diagonal through the centre forks:
+// from d4 it continues to the d4 of both other players (then c3, b2, a1); from e4 to both other e4s.
+// That keeps every bishop on its own colour.
+(function (root) {
+  'use strict';
+  const C = {};
+  const mod3 = x => ((x % 3) + 3) % 3;
+  const idx = (s, f, r) => s * 32 + r * 8 + f;
+  const segOf = i => i >> 5, fileOf = i => i & 7, rankOf = i => (i >> 3) & 3;
+  const BACK = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
+  const ORTHO = [[1, 0], [-1, 0], [0, 1], [0, -1]], DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const ALL = ORTHO.concat(DIAG);
+  Object.assign(C, { idx, segOf, fileOf, rankOf, ORTHO, DIAG });
+
+  // One step from cell i in direction (df, dr) given in that cell's segment coordinates.
+  // Returns a list of [cell, df, dr]: the direction is re-expressed in the new cell's segment.
+  // Empty list = off the board; two entries = a diagonal through the centre.
+  function step(i, df, dr) {
+    const s = segOf(i), f = fileOf(i), r = rankOf(i), nf = f + df, nr = r + dr;
+    if (nr < 0 || nf < 0 || nf > 7) return [];
+    if (nr <= 3) return [[idx(s, nf, nr), df, dr]];
+    const left = f < 4;
+    if (df === 0) return [[idx(left ? mod3(s - 1) : mod3(s + 1), 7 - f, 3), 0, -1]];
+    if (left === (nf < 4)) return [[idx(left ? mod3(s - 1) : mod3(s + 1), 7 - nf, 3), -df, -1]];
+    // Through the centre (from d4 going right-up, or e4 going left-up).
+    return [mod3(s + 1), mod3(s + 2)].map(q => f === 3 ? [idx(q, 3, 3), -1, -1] : [idx(q, 4, 3), 1, -1]);
+  }
+  C.step = step;
+
+  const near = new Array(96), knightT = new Array(96);
+  for (let i = 0; i < 96; i++) {
+    const n = new Set();
+    for (const [a, b] of ALL) for (const [t] of step(i, a, b)) n.add(t);
+    near[i] = [...n];
+    // Knight: one straight step, then one diagonal step that keeps going the same way (or the other order).
+    const k = new Set();
+    for (const [a, b] of ORTHO) for (const [c, x, y] of step(i, a, b))
+      for (const [p, q] of (x ? [[x, 1], [x, -1]] : [[1, y], [-1, y]])) for (const [t] of step(c, p, q)) k.add(t);
+    for (const [a, b] of DIAG) for (const [c, x, y] of step(i, a, b))
+      for (const [p, q] of [[x, 0], [0, y]]) for (const [t] of step(c, p, q)) k.add(t);
+    k.delete(i); for (const t of near[i]) k.delete(t);
+    knightT[i] = [...k];
+  }
+  C.near = near; C.knight = knightT;
+
+  function slide(board, i, dirs, once, o, out) {
+    for (const [df, dr] of dirs) {
+      let front = [[i, df, dr]]; const seen = new Set([i]);
+      while (front.length) {
+        const next = [];
+        for (const [c, a, b] of front) for (const st of step(c, a, b)) {
+          const t = st[0]; if (seen.has(t)) continue; seen.add(t);
+          const q = board[t];
+          if (!q) { out.push(t); if (!once) next.push(st); } else if (q.o !== o) out.push(t);
+        }
+        front = next;
+      }
+    }
+  }
+
+  // Cells the piece on i can move to, ignoring checks and castling. attack=true: cells it attacks
+  // (for pawns that is the two forward diagonals, empty or not).
+  function targets(board, i, attack) {
+    const pc = board[i]; if (!pc) return [];
+    const out = [];
+    switch (pc.t) {
+      case 'k': for (const t of near[i]) if (!board[t] || board[t].o !== pc.o) out.push(t); break;
+      case 'n': for (const t of knightT[i]) if (!board[t] || board[t].o !== pc.o) out.push(t); break;
+      case 'r': slide(board, i, ORTHO, false, pc.o, out); break;
+      case 'b': slide(board, i, DIAG, false, pc.o, out); break;
+      case 'q': slide(board, i, ALL, false, pc.o, out); break;
+      case 'p': {
+        const fd = segOf(i) === pc.o ? 1 : -1;
+        for (const df of [1, -1]) for (const [t] of step(i, df, fd))
+          if (attack || (board[t] && board[t].o !== pc.o)) out.push(t);
+        if (attack) break;
+        const f1 = step(i, 0, fd)[0];
+        if (f1 && !board[f1[0]]) {
+          out.push(f1[0]);
+          if (segOf(i) === pc.o && rankOf(i) === 1) { const f2 = step(f1[0], 0, 1)[0]; if (f2 && !board[f2[0]]) out.push(f2[0]); }
+        }
+        break;
+      }
+    }
+    return [...new Set(out)];
+  }
+  C.targets = targets;
+
+  C.newGame = function () {
+    const board = new Array(96).fill(null);
+    for (let s = 0; s < 3; s++) for (let f = 0; f < 8; f++) {
+      board[idx(s, f, 0)] = { o: s, t: BACK[f] };
+      board[idx(s, f, 1)] = { o: s, t: 'p' };
+    }
+    return { board, turn: 0, alive: [true, true, true], out: [null, null, null], captured: [[], [], []],
+      last: null, events: [], winner: null, draw: false, moves: 0 };
+  };
+
+  const kingOf = (board, o) => board.findIndex(p => p && p.o === o && p.t === 'k');
+  function attacked(board, cell, byWho) {
+    for (let j = 0; j < 96; j++) { const p = board[j]; if (p && byWho(p.o) && targets(board, j, true).includes(cell)) return true; }
+    return false;
+  }
+  C.attacked = attacked;
+  C.inCheck = (st, o) => { const k = kingOf(st.board, o); return k >= 0 && attacked(st.board, k, x => x !== o && st.alive[x]); };
+
+  function play(board, m) { // returns a new board
+    const b = board.slice(), pc = b[m.from];
+    b[m.to] = { ...pc, m: 1 }; b[m.from] = null;
+    if (m.rook != null) { b[m.rookTo] = { ...b[m.rook], m: 1 }; b[m.rook] = null; }
+    if (pc.t === 'p' && rankOf(m.to) === 0 && segOf(m.to) !== pc.o) b[m.to].t = 'q';
+    return b;
+  }
+
+  // All legal moves of player o: a move may not leave o's own king attacked by a player still in the game.
+  function legal(st, o, from) {
+    const res = [], foes = x => x !== o && st.alive[x];
+    const list = from == null ? [...Array(96).keys()] : [from];
+    for (const i of list) {
+      const pc = st.board[i]; if (!pc || pc.o !== o) continue;
+      const cand = targets(st.board, i, false).map(to => ({ from: i, to }));
+      if (pc.t === 'k' && !pc.m && i === idx(o, 4, 0) && !attacked(st.board, i, foes)) {
+        for (const [rf, path, kTo, rTo] of [[7, [5, 6], 6, 5], [0, [3, 2, 1], 2, 3]]) {
+          const r = st.board[idx(o, rf, 0)];
+          if (!r || r.o !== o || r.t !== 'r' || r.m) continue;
+          if (path.some(f => st.board[idx(o, f, 0)])) continue;
+          if (path.slice(0, 2).some(f => attacked(st.board, idx(o, f, 0), foes))) continue; // the king may not cross an attacked cell
+          cand.push({ from: i, to: idx(o, kTo, 0), rook: idx(o, rf, 0), rookTo: idx(o, rTo, 0) });
+        }
+      }
+      for (const m of cand) {
+        const b = play(st.board, m), k = kingOf(b, o);
+        if (!attacked(b, k, foes)) res.push(m);
+      }
+    }
+    return res;
+  }
+  C.legal = legal;
+
+  function eliminate(st, o, why) {
+    st.alive[o] = false; st.out[o] = why;
+    for (let j = 0; j < 96; j++) if (st.board[j] && st.board[j].o === o) st.board[j] = null;
+  }
+
+  // Make move m for the player to move. Returns the new state (the old one is not changed).
+  C.move = function (st0, m) {
+    const st = JSON.parse(JSON.stringify(st0));
+    const me = st.turn, pc = st.board[m.from], cap = st.board[m.to];
+    st.events = [];
+    st.board = play(st.board, m);
+    if (cap) {
+      st.captured[me].push(cap.t);
+      if (cap.t === 'k') { eliminate(st, cap.o, 'king'); st.events.push({ type: 'kingTaken', p: cap.o, by: me }); }
+    }
+    if (pc.t === 'p' && st.board[m.to].t === 'q') st.events.push({ type: 'promo', p: me });
+    st.last = { from: m.from, to: m.to }; st.moves++;
+    advance(st);
+    return st;
+  };
+
+  function onlyKings(st) { return st.board.every(p => !p || p.t === 'k'); }
+
+  // Pass the turn on: skip players who are out, knock out a player who is checkmated,
+  // let a stalemated player pass. Ends the game when one player is left.
+  function advance(st) {
+    let passes = 0;
+    for (let guard = 0; guard < 9; guard++) {
+      const left = [0, 1, 2].filter(x => st.alive[x]);
+      if (left.length <= 1) { st.winner = left[0]; return; }
+      if (onlyKings(st)) { st.draw = true; return; }
+      let p = st.turn; do p = mod3(p + 1); while (!st.alive[p]);
+      st.turn = p;
+      if (legal(st, p).length) { if (C.inCheck(st, p)) st.events.push({ type: 'check', p }); return; }
+      if (C.inCheck(st, p)) { eliminate(st, p, 'mate'); st.events.push({ type: 'mate', p }); passes = 0; continue; }
+      st.events.push({ type: 'pass', p });
+      if (++passes >= left.length) { st.draw = true; return; }
+    }
+  }
+
+  // Square names like "Wd4" for tests and debugging.
+  C.name = i => 'WBR'[segOf(i)] + 'abcdefgh'[fileOf(i)] + (rankOf(i) + 1);
+  C.cell = n => idx('WBR'.indexOf(n[0]), 'abcdefgh'.indexOf(n[1]), +n[2] - 1);
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = C; else root.Chess3 = C;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+// Screens: draws the hexagonal board in SVG, handles taps, undo, names, settings. Rules are in rules.js.
+(function () {
+  'use strict';
+  const C = window.Chess3, $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+  const KEY = 'chess3-v1';
+
+  // ---- words (English and Russian) ----
+  const T = {
+    en: { title: 'Chess for Three', undo: 'Undo', 'new': 'New game', rules: 'Rules', settings: 'Settings',
+      names: ['White', 'Black', 'Red'], toMove: '{n} to move', check: '{n}, your king is in check!',
+      mate: '{n} is checkmated and out of the game.', king: '{b} took the king of {n}! {n} is out.',
+      pass: '{n} has no moves and skips a turn.', promo: 'The pawn became a queen!', wins: '{n} wins!', draw: 'Draw!',
+      sure: 'Start a new game?', yes: 'Yes, new game', no: 'Keep playing', close: 'Done', again: 'Play again',
+      view: 'Board view', vFixed: 'Board stays still', vTurn: 'Board turns to the player to move', vTable: 'Pieces face their players',
+      lang: 'Language', nameOf: 'Name of player {k}', sound: 'Sounds',
+      rulesTitle: 'How to play', rulesText: [
+        'Three players take turns: White, then Black, then Red.',
+        'Pieces move like in normal chess. Tap a piece to see where it can go.',
+        'Lines go across the middle into the other players’ parts of the board.',
+        'A bishop that goes through the very centre can turn to either other player. It always stays on its colour.',
+        'Pawns walk toward the centre, then into another player’s part. On that player’s first row a pawn becomes a queen.',
+        'You may not leave your king in check. If you have no move to save it, you are checkmated and out.',
+        'If someone leaves a king in check, the next player may take it!',
+        'The last king on the board wins.'] },
+    ru: { title: 'Шахматы на троих', undo: 'Назад', 'new': 'Новая игра', rules: 'Правила', settings: 'Настройки',
+      names: ['Белые', 'Чёрные', 'Красные'], toMove: 'Ходят {n}', check: '{n}: шах королю!',
+      mate: '{n}: мат, выбывают из игры.', king: '{b} съели короля! {n} выбывают.',
+      pass: '{n}: нет ходов, пропуск.', promo: 'Пешка стала ферзём!', wins: 'Победили {n}!', draw: 'Ничья!',
+      sure: 'Начать новую игру?', yes: 'Да, новая игра', no: 'Играть дальше', close: 'Готово', again: 'Играть ещё',
+      view: 'Вид доски', vFixed: 'Доска стоит на месте', vTurn: 'Доска поворачивается к тому, чей ход', vTable: 'Фигуры смотрят на своих игроков',
+      lang: 'Язык', nameOf: 'Имя игрока {k}', sound: 'Звуки',
+      rulesTitle: 'Как играть', rulesText: [
+        'Три игрока ходят по очереди: белые, потом чёрные, потом красные.',
+        'Фигуры ходят как в обычных шахматах. Нажми на фигуру, и увидишь, куда она может пойти.',
+        'Линии проходят через середину в части доски других игроков.',
+        'Слон, проходящий через самый центр, может свернуть к любому из двух других игроков. Он всегда остаётся на своём цвете.',
+        'Пешки идут к центру, а потом в часть другого игрока. На его первом ряду пешка становится ферзём.',
+        'Нельзя оставлять своего короля под шахом. Если спасти его нечем, это мат, и игрок выбывает.',
+        'Если кто-то оставил короля под шахом, следующий игрок может его съесть!',
+        'Побеждает последний король на доске.'] }
+  };
+
+  // ---- saved data ----
+  let save = { lang: (navigator.language || 'en').slice(0, 2) === 'ru' ? 'ru' : 'en', names: [null, null, null], view: 'fixed', sound: true, game: null, hist: [] };
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.game && s.game.board) save = Object.assign(save, s); } catch (e) { /* no storage */ }
+  const store = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* no storage */ } };
+  let st = save.game || C.newGame(), sel = null, moves = [], animate = false;
+  const tr = () => T[save.lang] || T.en;
+  const nameOf = p => save.names[p] || tr().names[p];
+  const fill = (s, o) => s.replace(/\{(\w)\}/g, (_, k) => o[k]);
+
+  // ---- geometry: hexagon of radius 1, White's side at the bottom ----
+  const V = [0, 1, 2, 3, 4, 5].map(k => { const a = (120 - 60 * k) * Math.PI / 180; return [Math.cos(a), Math.sin(a)]; });
+  const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const M = V.map((v, k) => mid(v, V[(k + 1) % 6])), O = [0, 0];
+  const kite = (s, right) => right ? [M[2 * s], V[2 * s + 1], M[2 * s + 1], O] : [V[2 * s], M[2 * s], O, M[(2 * s + 5) % 6]];
+  const bil = (q, u, v) => [0, 1].map(k => (1 - u) * (1 - v) * q[0][k] + u * (1 - v) * q[1][k] + u * v * q[2][k] + (1 - u) * v * q[3][k]);
+  const cellPoly = [], cellMid = [], cellSize = [];
+  for (let i = 0; i < 96; i++) {
+    const s = C.segOf(i), f = C.fileOf(i), r = C.rankOf(i), q = kite(s, f >= 4), u = (f % 4) / 4, v = r / 4, d = 0.25;
+    const pts = [bil(q, u, v), bil(q, u + d, v), bil(q, u + d, v + d), bil(q, u, v + d)];
+    cellPoly[i] = pts; cellMid[i] = bil(q, u + d / 2, v + d / 2);
+    const area = Math.abs(pts.reduce((a, p, k) => { const n = pts[(k + 1) % 4]; return a + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+    cellSize[i] = Math.sqrt(area);
+  }
+
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const svg = $('board');
+  const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+
+  // Rotation of the whole board ("turn" view) and of each piece so it reads upright (or faces its owner).
+  const worldRot = () => save.view === 'turn' ? 120 * st.turn : 0;
+  const pieceRot = o => save.view === 'table' ? -120 * o : -worldRot();
+
+  let world, cellsG, marksG, piecesG, labelsG;
+  function build() {
+    svg.textContent = '';
+    world = el('g', { id: 'world' }, svg);
+    el('polygon', { points: V.map(p => p.map(x => x * 1.035).join(',')).join(' '), fill: '#4a2f1b', stroke: '#d9a441', 'stroke-width': 0.006 }, world);
+    cellsG = el('g', {}, world); marksG = el('g', { class: 'mark' }, world); piecesG = el('g', {}, world); labelsG = el('g', {}, world);
+    for (let i = 0; i < 96; i++) {
+      const c = el('polygon', { points: cellPoly[i].map(p => p.join(',')).join(' '), class: 'cell ' + ((C.fileOf(i) + C.rankOf(i)) % 2 ? 'l' : 'd'), 'data-i': i }, cellsG);
+      c.addEventListener('pointerdown', e => { e.preventDefault(); tap(i); });
+    }
+    // Small file letters along each player's first row.
+    for (let s = 0; s < 3; s++) for (let f = 0; f < 8; f++) {
+      const i = C.idx(s, f, 0), q = kite(s, f >= 4), p = bil(q, (f % 4 + 0.5) / 4, -0.035);
+      const g = el('g', { transform: `translate(${p[0]},${p[1]})` }, world);
+      const t = el('text', { 'font-size': 0.034, fill: '#d9a441', 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-family': 'Alegreya Sans, sans-serif', transform: `rotate(${-120 * s})` }, g);
+      t.textContent = 'abcdefgh'[f]; void i;
+    }
+  }
+
+  function render() {
+    const t = tr();
+    document.documentElement.lang = save.lang;
+    $('title').textContent = t.title; document.title = t.title;
+    $('undo').textContent = t.undo; $('new').textContent = t['new']; $('rules').textContent = t.rules; $('settings').textContent = t.settings;
+    $('undo').disabled = !save.hist.length;
+    world.style.transform = `rotate(${worldRot()}deg)`;
+    marksG.textContent = ''; piecesG.textContent = ''; labelsG.textContent = '';
+    const poly = (i, attrs) => el('polygon', Object.assign({ points: cellPoly[i].map(p => p.join(',')).join(' ') }, attrs), marksG);
+    if (st.last) { poly(st.last.from, { fill: 'rgba(217,164,65,.35)' }); poly(st.last.to, { fill: 'rgba(217,164,65,.5)' }); }
+    for (let p = 0; p < 3; p++) if (st.alive[p] && C.inCheck(st, p)) {
+      const k = st.board.findIndex(x => x && x.o === p && x.t === 'k'); poly(k, { fill: 'rgba(224,71,60,.75)' });
+    }
+    if (sel != null) poly(sel, { fill: 'rgba(120,200,120,.55)' });
+    for (const m of moves) {
+      const [x, y] = cellMid[m.to], r = cellSize[m.to];
+      if (st.board[m.to]) el('circle', { cx: x, cy: y, r: r * 0.44, fill: 'none', stroke: 'rgba(40,140,60,.9)', 'stroke-width': r * 0.1 }, marksG);
+      else el('circle', { cx: x, cy: y, r: r * 0.17, fill: 'rgba(30,110,50,.75)' }, marksG);
+    }
+    for (let i = 0; i < 96; i++) {
+      const pc = st.board[i]; if (!pc) continue;
+      const [x, y] = cellMid[i], sz = cellSize[i] * 0.95;
+      const g = el('g', { class: 'piece', transform: `translate(${x},${y})`, 'data-i': i }, piecesG);
+      const rg = el('g', { class: 'rot', style: `transform: rotate(${pieceRot(pc.o)}deg)` }, g);
+      const tx = el('text', { class: 'o' + pc.o, 'font-size': sz, 'stroke-width': sz * 0.07, y: sz * 0.02 }, rg);
+      tx.textContent = GLYPH[pc.t] + '︎';
+    }
+    // Player name plates outside each player's side, facing that player.
+    for (let p = 0; p < 3; p++) {
+      const m = M[2 * p], g = el('g', { class: 'label' + (p === st.turn && st.winner == null && !st.draw ? ' on' : '') + (st.alive[p] ? '' : ' out'),
+        transform: `translate(${m[0] * 1.17},${m[1] * 1.17}) rotate(${-120 * p})` }, labelsG);
+      const caps = st.captured[p].filter(x => x !== 'k').length, text = nameOf(p) + (caps ? '  +' + caps : '');
+      const w = Math.max(0.42, text.length * 0.05 + 0.12);
+      el('rect', { class: 'bg', x: -w / 2, y: -0.065, width: w, height: 0.13, rx: 0.065 }, g);
+      el('circle', { cx: -w / 2 + 0.07, cy: 0, r: 0.032, class: 'o' + p, 'stroke-width': 0.006 }, g);
+      const tx = el('text', { x: 0.03, 'font-size': 0.075, fill: '#f1e7d3' }, g); tx.textContent = text;
+    }
+    // Status line.
+    const s = $('status'); s.className = 'status'; s.textContent = '';
+    const chip = p => { const c = document.createElement('span'); c.className = 'chip'; c.style.background = ['var(--ivory)', 'var(--ebony)', 'var(--ruby)'][p]; s.appendChild(c); };
+    const ev = (st.events || []).filter(e => e.type !== 'check');
+    let msg = ev.map(e => fill(e.type === 'kingTaken' ? t.king : t[e.type], { n: nameOf(e.p), b: nameOf(e.by) })).join(' ');
+    if (st.winner != null) { chip(st.winner); msg = (msg ? msg + ' ' : '') + fill(t.wins, { n: nameOf(st.winner) }); }
+    else if (st.draw) msg = (msg ? msg + ' ' : '') + t.draw;
+    else {
+      chip(st.turn);
+      const chk = C.inCheck(st, st.turn);
+      msg = (msg ? msg + ' ' : '') + fill(chk ? t.check : t.toMove, { n: nameOf(st.turn) });
+      if (chk) s.classList.add('alarm');
+    }
+    s.appendChild(document.createTextNode(msg));
+    if (animate && st.last) {
+      animate = false;
+      const g = piecesG.querySelector(`[data-i="${st.last.to}"] text`), a = cellMid[st.last.from], b = cellMid[st.last.to];
+      if (g && g.animate) {
+        // Slide from the old cell: the offset is in board units, turned into the piece's own (rotated) frame.
+        const rot = -pieceRot(st.board[st.last.to].o) * Math.PI / 180, dx = a[0] - b[0], dy = a[1] - b[1];
+        const lx = dx * Math.cos(rot) - dy * Math.sin(rot), ly = dx * Math.sin(rot) + dy * Math.cos(rot);
+        try { g.animate([{ transform: `translate(${lx}px,${ly}px)` }, { transform: 'translate(0,0)' }], { duration: 260, easing: 'ease-out' }); } catch (e) { /* no animation */ }
+      }
+    }
+    if ((st.winner != null || st.draw) && !shownEnd) { shownEnd = true; setTimeout(showEnd, 500); }
+  }
+  let shownEnd = st.winner != null || st.draw;
+
+  // ---- sounds (tiny clicks from Web Audio, started by a tap) ----
+  let ac = null;
+  function beep(freq, len) {
+    if (!save.sound) return;
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.18, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + len);
+      o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + len);
+    } catch (e) { /* no sound */ }
+  }
+
+  function tap(i) {
+    if (st.winner != null || st.draw) return;
+    const m = moves.find(x => x.to === i);
+    if (sel != null && m) {
+      save.hist.push(st); if (save.hist.length > 300) save.hist.shift();
+      const cap = !!st.board[m.to];
+      st = C.move(st, m); sel = null; moves = []; animate = true;
+      beep(cap ? 330 : 520, cap ? 0.25 : 0.12);
+      if (st.events.some(e => e.type === 'check')) setTimeout(() => beep(880, 0.3), 150);
+      persist(); render(); return;
+    }
+    const pc = st.board[i];
+    if (pc && pc.o === st.turn && i !== sel) { sel = i; moves = C.legal(st, st.turn, i); beep(700, 0.05); }
+    else { sel = null; moves = []; }
+    render();
+  }
+  function persist() { save.game = st; store(); }
+
+  // ---- dialogs ----
+  const dlg = $('dlg'), card = $('dlgCard');
+  function open(html, wire) { card.innerHTML = html; dlg.hidden = false; wire && wire(); const b = card.querySelector('button'); b && b.focus(); }
+  const shut = () => { dlg.hidden = true; };
+  dlg.addEventListener('pointerdown', e => { if (e.target === dlg && !dlg.dataset.lock) shut(); });
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function newGame() { st = C.newGame(); save.hist = []; sel = null; moves = []; shownEnd = false; persist(); render(); }
+  function showEnd() {
+    const t = tr();
+    open(`<div class="big">${st.winner != null ? esc(fill(t.wins, { n: nameOf(st.winner) })) : esc(t.draw)}</div>
+      <div class="row"><button id="dClose" type="button">${esc(t.close)}</button><button class="primary" id="dAgain" type="button">${esc(t.again)}</button></div>`,
+    () => { $('dClose').onclick = shut; $('dAgain').onclick = () => { shut(); newGame(); }; });
+  }
+  $('new').onclick = () => {
+    const t = tr();
+    open(`<h2>${esc(t.sure)}</h2><div class="row"><button id="dNo" type="button">${esc(t.no)}</button><button class="primary" id="dYes" type="button">${esc(t.yes)}</button></div>`,
+      () => { $('dNo').onclick = shut; $('dYes').onclick = () => { shut(); newGame(); }; });
+  };
+  $('undo').onclick = () => {
+    if (!save.hist.length) return;
+    st = save.hist.pop(); sel = null; moves = []; shownEnd = st.winner != null || st.draw; persist(); render();
+  };
+  $('rules').onclick = () => {
+    const t = tr();
+    open(`<h2>${esc(t.rulesTitle)}</h2><ul>${t.rulesText.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      <div class="row"><button class="primary" id="dOk" type="button">${esc(t.close)}</button></div>`, () => { $('dOk').onclick = shut; });
+  };
+  $('settings').onclick = () => {
+    const t = tr();
+    open(`<h2>${esc(t.settings)}</h2>
+      ${[0, 1, 2].map(p => `<label for="nm${p}">${esc(fill(t.nameOf, { k: p + 1 }))} (${esc(t.names[p])})<input id="nm${p}" maxlength="14" value="${esc(save.names[p] || '')}" placeholder="${esc(t.names[p])}"></label>`).join('')}
+      <label for="vw">${esc(t.view)}<select id="vw">
+        <option value="fixed">${esc(t.vFixed)}</option><option value="turn">${esc(t.vTurn)}</option><option value="table">${esc(t.vTable)}</option></select></label>
+      <label for="lg">${esc(t.lang)}<select id="lg"><option value="en">English</option><option value="ru">Русский</option></select></label>
+      <label for="snd">${esc(t.sound)}<select id="snd"><option value="1">✓</option><option value="0">✕</option></select></label>
+      <div class="row"><button class="primary" id="dOk" type="button">${esc(t.close)}</button></div>`,
+    () => {
+      $('vw').value = save.view; $('lg').value = save.lang; $('snd').value = save.sound ? '1' : '0';
+      $('dOk').onclick = () => {
+        save.names = [0, 1, 2].map(p => $('nm' + p).value.trim() || null);
+        save.view = $('vw').value; save.lang = $('lg').value; save.sound = $('snd').value === '1';
+        store(); shut(); render();
+      };
+    });
+  };
+
+  // Keep the screen on during a game where the browser allows it.
+  const wake = () => { try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) { /* not allowed */ } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+  wake();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  build(); render();
+  window.__chess3 = { get state() { return st; }, tap };
+})();
+</script>
+</body>
+</html>
