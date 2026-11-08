@@ -58,7 +58,10 @@ await page.screenshot({ path: path.join(out, 'table-ru.png') });
 const p2 = await browser.newPage({ viewport: { width: 390, height: 844 } }); await p2.goto(url);
 await p2.evaluate(() => localStorage.clear()); await p2.reload();
 if (!await p2.evaluate(() => document.body.classList.contains('compact'))) throw new Error('phone layout not used');
-if (!/rotate\(90deg\)/.test(await p2.getAttribute('#world', 'style'))) throw new Error('board not turned');
+if (await p2.getAttribute('#world', 'transform') !== 'rotate(90)') throw new Error('board not turned');
+// No CSS transforms or animations inside the board (iPhone Safari left unpainted stripes with them).
+const cssT = await p2.evaluate(() => [...document.querySelectorAll('#board *')].filter(e => e.style.transform || getComputedStyle(e).transitionDuration.split(',').some(d => parseFloat(d) > 0)).length);
+if (cssT) throw new Error('CSS transforms in the board: ' + cssT);
 if (await p2.isHidden('#players')) throw new Error('no player strip');
 const realTap = async (pg, i) => { const b = await pg.locator(`polygon.cell[data-i="${i}"]`).boundingBox(); await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
 await realTap(p2, 12); await realTap(p2, 28); // White e2-e4 with real taps

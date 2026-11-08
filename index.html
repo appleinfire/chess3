@@ -44,13 +44,11 @@ button.primary { background: var(--brass); color: #2a1c0c; border-color: var(--b
 .status.alarm { color: #ffb4a8; }
 .stage { flex: 1; min-height: 0; display: grid; place-items: center; }
 svg#board { width: 100%; height: 100%; max-width: 100%; touch-action: none; }
-#world { transition: transform .7s cubic-bezier(.4,.1,.2,1); }
 .cell { stroke: rgba(60,35,15,.35); stroke-width: .002; cursor: pointer; }
 .cell.l { fill: var(--maple); } .cell.d { fill: var(--walnut); }
 .mark { pointer-events: none; }
 .piece { pointer-events: none; }
 .piece text { font-family: var(--glyph); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke-linejoin: round; }
-.piece .rot { transition: transform .7s cubic-bezier(.4,.1,.2,1); }
 .o0 { fill: var(--ivory); stroke: #3b2a18; } .o1 { fill: var(--ebony); stroke: #efe3c9; } .o2 { fill: var(--ruby); stroke: #3a0b0d; }
 .label text { font-family: var(--display); font-weight: 700; text-anchor: middle; dominant-baseline: central; }
 .label .bg { fill: rgba(0,0,0,.25); stroke: rgba(241,231,211,.2); stroke-width: .004; }
@@ -95,7 +93,6 @@ body.compact .bar button { width: 44px; padding: 0; font-size: 22px; flex: none;
 body.compact .status { font-size: 17px; margin-top: 4px; padding: 0 8px; }
 body.compact button.kind { min-width: 44px; padding: 4px 4px; }
 body.compact button.kind span { font-size: 30px; }
-@media (prefers-reduced-motion: reduce) { #world, .piece .rot { transition: none; } }
 @media (max-width: 520px) { .bar h1 { font-size: 18px; } button { padding: 8px 10px; font-size: 15px; } }
 </style>
 </head>
