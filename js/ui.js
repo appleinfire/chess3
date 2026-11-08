@@ -110,7 +110,31 @@
   let compact = false;
   const isCompact = () => window.innerWidth < 700 && window.innerHeight > window.innerWidth * 1.15;
   const worldRot = () => (compact ? 90 : 0) + (save.view === 'turn' && !edit ? 120 * st.turn : 0);
-  const pieceRot = o => save.view === 'table' ? -120 * o : -worldRot();
+  const pieceRot = (o, w = worldRot()) => save.view === 'table' ? -120 * o : -w;
+
+  // All turning and sliding is done with SVG transform attributes, moved frame by frame. CSS transforms and
+  // CSS/Web animations on SVG parts made iPhone Safari leave stripes of the board unpainted after a move.
+  const calm = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ease = k => 1 - Math.pow(1 - k, 3);
+  function tween(ms, step, done) {
+    if (calm()) { step(1); done && done(); return; }
+    const t0 = performance.now();
+    const f = now => { const k = Math.min(1, (now - t0) / ms); step(ease(k)); if (k < 1) requestAnimationFrame(f); else if (done) done(); };
+    requestAnimationFrame(f);
+  }
+  let shownRot = null, rotGoal = null, rotRun = 0;
+  function paintRot(w) {
+    world.setAttribute('transform', `rotate(${w})`);
+    piecesG.querySelectorAll('.rot').forEach(g => g.setAttribute('transform', `rotate(${pieceRot(+g.dataset.o, w)})`));
+  }
+  function setRot() {
+    const goal = worldRot();
+    if (shownRot === null || rotGoal === goal && shownRot === goal) { shownRot = goal; rotGoal = goal; paintRot(goal); return; }
+    if (rotGoal === goal) { paintRot(shownRot); return; } // already turning there
+    const from = shownRot, d = ((goal - from) % 360 + 540) % 360 - 180; // the short way round
+    rotGoal = goal; const my = ++rotRun; // a newer turn takes over from this one
+    tween(700, k => { if (my !== rotRun) return; shownRot = from + d * k; paintRot(shownRot); }, () => { if (my === rotRun) { shownRot = goal; paintRot(goal); } });
+  }
 
   let world, marksG, piecesG, labelsG;
   function build() {
@@ -137,7 +161,6 @@
       $(id).textContent = compact ? icon : t[id]; $(id).setAttribute('aria-label', t[id]); $(id).title = t[id];
     }
     $('undo').disabled = !save.hist.length || !!edit;
-    world.style.transform = `rotate(${worldRot()}deg)`;
     marksG.textContent = ''; piecesG.textContent = ''; labelsG.textContent = '';
     const poly = (i, attrs) => el('polygon', Object.assign({ points: cellPoly[i].map(p => p.join(',')).join(' ') }, attrs), marksG);
     if (!edit) {
@@ -158,7 +181,7 @@
       const pc = board[i]; if (!pc) continue;
       const [x, y] = cellMid[i], sz = cellSize[i] * (compact ? 1.05 : 0.95), frozen = !edit && !st.alive[pc.o];
       const g = el('g', { class: 'piece' + (frozen ? ' frozen' : ''), transform: `translate(${x},${y})`, 'data-i': i }, piecesG);
-      const rg = el('g', { class: 'rot', style: `transform: rotate(${pieceRot(pc.o)}deg)` }, g);
+      const rg = el('g', { class: 'rot', 'data-o': pc.o }, g);
       el('text', { class: 'o' + pc.o, 'font-size': sz, 'stroke-width': sz * 0.07, y: sz * 0.02 }, rg).textContent = glyph(pc.t);
     }
     // Player name plates outside each player's side, facing that player. Teammates share a star colour.
@@ -168,7 +191,7 @@
       const g = el('g', { class: 'label' + (!edit && p === st.turn && !over() ? ' on' : '') + (playing ? '' : ' out'),
         transform: `translate(${m[0] * 1.17},${m[1] * 1.17}) rotate(${-120 * p})` }, labelsG);
       const caps = edit ? 0 : st.captured[p].filter(x => x !== 'k').length;
-      const team = R.teams ? (R.teams[p] === R.teams[[0, 1, 2].find(x => R.teams.filter(y => y === R.teams[x]).length === 2)] ? ' ★' : '') : '';
+      const team = R.teams && R.teams.filter(y => y === R.teams[p]).length === 2 ? ' \u2605' : ''; // the pair playing together
       const text = nameOf(p) + team + (caps ? '  +' + caps : '');
       const w = Math.max(0.42, text.length * 0.05 + 0.12);
       el('rect', { class: 'bg', x: -w / 2, y: -0.065, width: w, height: 0.13, rx: 0.065 }, g);
@@ -178,15 +201,12 @@
     renderStatus(t);
     renderStrip(t, R);
     renderPalette(t);
+    setRot();
     if (animate && st.last) {
       animate = false;
-      const g = piecesG.querySelector(`[data-i="${st.last.to}"] text`), a = cellMid[st.last.from], b = cellMid[st.last.to];
-      if (g && g.animate) {
-        // Slide from the old cell: the offset is in board units, turned into the piece's own (rotated) frame.
-        const rot = -pieceRot(st.board[st.last.to].o) * Math.PI / 180, dx = a[0] - b[0], dy = a[1] - b[1];
-        const lx = dx * Math.cos(rot) - dy * Math.sin(rot), ly = dx * Math.sin(rot) + dy * Math.cos(rot);
-        try { g.animate([{ transform: `translate(${lx}px,${ly}px)` }, { transform: 'translate(0,0)' }], { duration: 260, easing: 'ease-out' }); } catch (e) { /* no animation */ }
-      }
+      // Slide the moved piece from its old cell (board units, so the board's turn does not matter).
+      const g = piecesG.querySelector(`[data-i="${st.last.to}"]`), a = cellMid[st.last.from], b = cellMid[st.last.to];
+      if (g) tween(260, k => g.setAttribute('transform', `translate(${a[0] + (b[0] - a[0]) * k},${a[1] + (b[1] - a[1]) * k})`));
     }
     if (over() && !shownEnd && !edit) { shownEnd = true; setTimeout(showEnd, 500); }
   }
